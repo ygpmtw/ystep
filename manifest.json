@@ -1,0 +1,15 @@
+{
+  "name": "YesterdayStep",
+  "short_name": "YesterdayStep",
+  "start_url": "/yesterdaystep/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#11ca93",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/512/11ca93/ffffff?text=YS",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
