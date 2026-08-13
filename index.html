@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run Tracker & Progress</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f1f1f1;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      
+      /* NEW ACCENT COLOR: Tosca / Teal */
+      --accent: #11ca93; /* Teal 400 */
+      --accent-hover: #089b6f; /* Teal 500 */
+      --chart-hr: #f43f5e; /* Rose 500 for variety against Tosca */
+      
+      --border: #e2e8f0;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 2rem 1rem; max-width: 1000px; margin: 0 auto; line-height: 1.5; }
+    
+    header { margin-bottom: 2rem; }
+    h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.025em; }
+    p.subtitle { color: var(--muted); font-size: 0.9rem; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; }
+
+    /* Form Layout */
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; }
+    .input-group { display: flex; flex-direction: column; gap: 0.35rem; }
+    label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+    input { padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; outline: none; transition: border 0.2s; background: white; color: var(--text);}
+    input:focus { border-color: var(--accent); ring: 2px solid rgba(45, 212, 191, 0.2); }
+    button.btn-add { grid-column: 1 / -1; padding: 0.75rem; background: var(--accent); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    button.btn-add:hover { background: var(--accent-hover); }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; gap: 1rem; }
+    .tab-btn { background: none; border: none; padding: 0.5rem 0.25rem; font-size: 0.95rem; font-weight: 500; color: var(--muted); cursor: pointer; position: relative; }
+    .tab-btn.active { color: var(--accent-hover); font-weight: 600; }
+    .tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); }
+
+    .tab-container-body { position: relative; min-height: 360px; } /* Ensures room for charts to init */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Table Styling */
+    .table-container { overflow-x: auto; max-height: 400px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; text-align: left; min-width: 600px; }
+    th { padding: 0.75rem; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--card); z-index: 10; }
+    td { padding: 0.75rem; border-bottom: 1px solid var(--border); }
+    tr:hover { background-color: #f1f5f9; }
+
+    .chart-container { position: relative; height: 340px; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>YESTERDAYSTEP</h1>
+    <p class="subtitle">Semoga lelah ini menjadi berkah.</p>
+  </header>
+
+  <!-- Input Form -->
+  <div class="card">
+    <h2>Log New Run</h2>
+    <form id="run-form">
+      <div class="form-grid">
+        <div class="input-group">
+          <label for="date">Date</label>
+          <input type="date" id="date" required>
+        </div>
+        <div class="input-group">
+          <label for="distance">Distance (km)</label>
+          <input type="number" step="0.01" id="distance" required placeholder="e.g. 5.01">
+        </div>
+        <div class="input-group">
+          <label for="duration">Duration (mins)</label>
+          <input type="number" step="0.1" id="duration" required placeholder="e.g. 42.8">
+        </div>
+        <div class="input-group">
+          <label for="hr">Avg HR (bpm)</label>
+          <input type="number" id="hr" placeholder="Optional">
+        </div>
+        <div class="input-group">
+          <label for="elevation">Elevation (m)</label>
+          <input type="number" id="elevation" placeholder="Optional">
+        </div>
+        <div class="input-group" style="grid-column: span 2;">
+          <label for="notes">Notes</label>
+          <input type="text" id="notes" placeholder="Location, feels, recovery status...">
+        </div>
+        <button type="submit" class="btn-add">Add Entry</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Progress Section -->
+  <div class="card">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('logs', this)">All Logs</button>
+      <button class="tab-btn" onclick="switchTab('pace', this)">Pace Progress</button>
+    </div>
+
+    <div class="tab-container-body">
+      <!-- Logs Tab -->
+      <div id="logs" class="tab-content active">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Distance</th>
+                <th>Duration</th>
+                <th>Pace</th>
+                <th>Avg HR</th>
+                <th>Elev</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pace Chart Tab -->
+      <div id="pace" class="tab-content">
+        <div class="chart-container">
+          <canvas id="paceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- HR Chart Tab -->
+      <div id="hr" class="tab-content">
+        <div class="chart-container">
+          <canvas id="hrChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Embedded historical data from images
+    const initialData = [
+      { date: "2026-05-16", distance: 4.34, duration: 52.4, hr: null, elev: null, notes: "" },
+      { date: "2026-05-16", distance: 1.41, duration: 11.2, hr: null, elev: null, notes: "" },
+      { date: "2026-05-23", distance: 5.00, duration: 48.6, hr: null, elev: null, notes: "" },
+      { date: "2026-05-30", distance: 5.20, duration: 44.0, hr: null, elev: null, notes: "" },
+      { date: "2026-06-04", distance: 5.01, duration: 41.4, hr: 159, elev: null, notes: "" },
+      { date: "2026-06-07", distance: 8.02, duration: 79.5, hr: 163, elev: null, notes: "" },
+      { date: "2026-06-09", distance: 5.01, duration: 41.9, hr: 167, elev: null, notes: "" },
+      { date: "2026-06-13", distance: 5.00, duration: 44.2, hr: 167, elev: null, notes: "" },
+      { date: "2026-06-16", distance: 7.60, duration: 83.0, hr: 158, elev: null, notes: "" },
+      { date: "2026-06-19", distance: 6.15, duration: 58.8, hr: 165, elev: null, notes: "" },
+      { date: "2026-06-27", distance: 10.01, duration: 104.0, hr: 160, elev: null, notes: "10k arah kertek" },
+      { date: "2026-07-06", distance: 5.01, duration: 42.8, hr: 164, elev: 73, notes: "Krasak" },
+      { date: "2026-07-08", distance: 5.02, duration: 38.6, hr: 170, elev: 73, notes: "Krasak" },
+      { date: "2026-07-11", distance: 8.28, duration: 104.4, hr: 160, elev: 617, notes: "Naik Bedakah" },
+      { date: "2026-07-11", distance: 13.00, duration: 147.4, hr: 157, elev: 227, notes: "Turun Bedakah" },
+      { date: "2026-07-16", distance: 5.02, duration: 40.4, hr: 161, elev: 73, notes: "Krasak" },
+      { date: "2026-07-19", distance: 10.01, duration: 93.8, hr: 156, elev: 130, notes: "Garung" },
+      { date: "2026-07-20", distance: 5.38, duration: 50.4, hr: 154, elev: 123, notes: "Mudal" },
+      { date: "2026-07-24", distance: 5.04, duration: 36.0, hr: 173, elev: 73, notes: "Krasak" },
+      { date: "2026-07-26", distance: 18.06, duration: 209.4, hr: 157, elev: 587, notes: "Naik Turun Bedakah" },
+      { date: "2026-08-02", distance: 10.15, duration: 85.6, hr: 165, elev: 132, notes: "Garung" }
+    ];
+
+    // Load from LocalStorage or use initial embedded data
+    let runData = JSON.parse(localStorage.getItem('runData_v2')) || initialData;
+    let paceChart = null, hrChart = null;
+
+    // Convert decimal minutes to M'SS" format
+    function calcPaceFormatted(durationMin, distanceKm) {
+      if (!distanceKm || distanceKm === 0) return "-";
+      let totalPaceMin = durationMin / distanceKm;
+      let mins = Math.floor(totalPaceMin);
+      let secs = Math.round((totalPaceMin - mins) * 60);
+      if (secs === 60) { mins++; secs = 0; }
+      return `${mins}'${secs < 10 ? '0' : ''}${secs}"`;
+    }
+
+    // Render the data logs table
+    function renderTable() {
+      const tbody = document.getElementById('table-body');
+      tbody.innerHTML = '';
+      [...runData].reverse().forEach(run => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${run.date}</td>
+          <td>${run.distance.toFixed(2)} km</td>
+          <td>${run.duration.toFixed(1)} min</td>
+          <td>${calcPaceFormatted(run.duration, run.distance)}</td>
+          <td>${run.hr ? run.hr + ' bpm' : '-'}</td>
+          <td>${run.elev ? run.elev + ' m' : '-'}</td>
+          <td>${run.notes || ''}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Pace Chart Renderer (Tosca theme)
+    function renderPaceChart() {
+      const labels = runData.map(r => r.date);
+      const paceValues = runData.map(r => (r.duration / r.distance).toFixed(2));
+
+      if (paceChart) paceChart.destroy();
+
+      const ctxPace = document.getElementById('paceChart').getContext('2d');
+      paceChart = new Chart(ctxPace, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Pace (Dec. Mins/km)',
+            data: paceValues,
+            borderColor: '#2dd4bf', /* Tosca */
+            backgroundColor: 'rgba(45, 212, 191, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: '#2dd4bf',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { tooltip: { intersect: false, mode: 'index' } },
+          scales: {
+            y: { 
+              title: { display: true, text: 'Min/km' },
+              reverse: true // Faster pace is higher up
+            }
+          }
+        }
+      });
+    }
+
+    // Heart Rate Chart Renderer (Corrected fix)
+    function renderHRChart() {
+      const labels = runData.map(r => r.date);
+      // Ensure numerical data, filter out nulls for calculations
+      const hrValues = runData.map(r => r.hr);
+      const validHRs = hrValues.filter(v => v !== null);
+
+      if (hrChart) hrChart.destroy();
+
+      const ctxHR = document.getElementById('hrChart').getContext('2d');
+      hrChart = new Chart(ctxHR, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Avg Heart Rate (bpm)',
+            data: hrValues,
+            borderColor: '#f43f5e', /* Rose Accent */
+            backgroundColor: 'rgba(244, 63, 94, 0.1)',
+            spanGaps: true, // Handle missing May data
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: '#f43f5e',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { tooltip: { intersect: false, mode: 'index' } },
+          scales: {
+            y: { 
+              title: { display: true, text: 'BPM' },
+              // Setting min/max ensures chart renders properly even if data is tightly clustered
+              min: validHRs.length > 0 ? Math.min(...validHRs) - 10 : 100, 
+              max: validHRs.length > 0 ? Math.max(...validHRs) + 10 : 200,
+              ticks: { stepSize: 10 }
+            }
+          }
+        }
+      });
+    }
+
+    // Tab Switching Logic with re-rendering fix
+    function switchTab(tabId, btnElement) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      
+      // Activate clicked tab
+      btnElement.classList.add('active');
+      const targetContent = document.getElementById(tabId);
+      targetContent.classList.add('active');
+
+      // The key fix: Trigger a resize or re-render when the canvas becomes visible
+      if (tabId === 'pace') {
+        renderPaceChart();
+      } else if (tabId === 'hr') {
+        renderHRChart(); // Explicitly calls render on active tab
+      }
+    }
+
+    // Handle Form Submission
+    document.getElementById('run-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const distance = parseFloat(document.getElementById('distance').value);
+      if (distance <= 0) { alert("Distance must be positive."); return; }
+
+      const newRun = {
+        date: document.getElementById('date').value,
+        distance: distance,
+        duration: parseFloat(document.getElementById('duration').value),
+        hr: document.getElementById('hr').value ? parseInt(document.getElementById('hr').value) : null,
+        elev: document.getElementById('elevation').value ? parseInt(document.getElementById('elevation').value) : null,
+        notes: document.getElementById('notes').value
+      };
+
+      runData.push(newRun);
+      // Sort array chronologically
+      runData.sort((a,b) => new Date(a.date) - new Date(b.date));
+      // Save updated data
+      localStorage.setItem('runData_v2', JSON.stringify(runData));
+
+      renderTable();
+      e.target.reset();
+      // Reset date default
+      document.getElementById('date').valueAsDate = new Date();
+    });
+
+    // Initialization on Page Load
+    document.getElementById('date').valueAsDate = new Date();
+    renderTable();
+
+  </script>
+</body>
+</html>
